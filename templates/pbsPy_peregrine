@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -l walltime=12:00:00           # Walltime
+#PBS -l nodes=1:ppn=24              # Number of nodes and processes per node
+#PBS -l feature=24core
+#PBS -A windsim                     # Allocation
+#PBS -q batch-h                     # Queue (debug/short/batch/batch-h/long
+#PBS -N jobname                     # Job name
+#PBS -M dries.allaerts@nrel.gov     # E-mail adres
+#PBS -m abe                         # Send e-mail when job aborts (q), begins (b), and ends (e)
+#PBS -j oe                          # Join STDOUT (o) and STDERR (e) into the output (o)
+
+# Prepare environment
+source deactivate
+module purge
+source $HOME/.bash_profile
+sourcePYTHON3
+
+#module list
+#which python
+#python --version
+
+# The execution:
+cd $PBS_O_WORKDIR
+
+cores=24
+script=templatePythonScriptParallel.py
+
+mpiexec -np $cores python $script
