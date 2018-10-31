@@ -3,11 +3,6 @@
 '''
 Some general python functions
 
-- heaviside
-- step
-- pulse
-- smoothstep
-
 Author: Dries Allaerts
 Date: May 10, 2017
 '''
