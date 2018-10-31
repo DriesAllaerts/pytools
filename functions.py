@@ -14,6 +14,59 @@ Date: May 10, 2017
 
 import numpy as np
 
+def low_pass_filter(t,u,Tf):
+    '''
+    Low pass filter
+
+    Parameters
+    ----------
+    t: numpy array
+        sampling time
+    u: numpy array
+        signal samples
+    Tf: float
+        Filter time scale
+
+    Returns
+    -------
+    uf: numpy array
+        low-pass filtered signal
+    '''
+    N = t.size
+    uf = u.copy()
+    for i in range(1,N):
+        dt = t[i]-t[i-1]
+        alpha = Tf/(Tf+dt)
+        uf[i] = alpha*uf[i-1] + (1-alpha)*u[i]
+    return uf
+
+
+def high_pass_filter(t,u,Tf):
+    '''
+    High pass filter
+
+    Parameters
+    ----------
+    t: numpy array
+        sampling time
+    u: numpy array
+        signal samples
+    Tf: float
+        Filter time scale
+
+    Returns
+    -------
+    uf: numpy array
+        high-pass filtered signal
+    '''
+    N = t.size
+    uf = u
+    for i in range(1,N):
+        dt = t[i]-t[i-1]
+        alpha = Tf/(Tf+dt)
+        uf[i] = alpha*uf[i-1] + alpha*(u[i]-u[i-1])
+    return uf
+
 def heaviside(x):
     '''
     Heaviside function:
