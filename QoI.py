@@ -16,6 +16,28 @@ from scipy import optimize
 
 
 def REWS(z,S,WD,zh,D,ax=-1):
+    '''
+    Compute rotor equivalent wind speed
+
+    Parameters
+    ----------
+    z: numpy 1D array of Nz
+        heights
+    S: numpy nD array
+        wind speed [m/s]
+    WD: numpy nD array
+        wind direction [degrees]
+    zh,D: float
+        hub height and radius of rotor disk
+    ax: int
+        axis corresponding to the vertical direction
+        default: last axis
+
+    Returns
+    -------
+    REWS: numpy nD-1 array
+        rotor equivalent wind speed
+    '''
     z1 = zh - D/2.
     z2 = zh + D/2.
     zcc,dz = np.linspace(z1,z2,10,retstep=True)
@@ -39,6 +61,27 @@ def REWS(z,S,WD,zh,D,ax=-1):
 
 
 def alpha(z,S,zh,D,ax=-1):
+    '''
+    Compute wind shear exponent by fitting a power law to
+    the velocity profile over the rotor disk region
+
+    Parameters
+    ----------
+    z: numpy 1D array of Nz
+        heights
+    S: numpy nD array
+        wind speed [m/s]
+    zh,D: float
+        hub height and radius of rotor disk
+    ax: int
+        axis corresponding to the vertical direction
+        default: last axis
+
+    Returns
+    -------
+    alpha: numpy nD-1 array
+        wind shear exponent
+    '''
     z1 = zh - D/2.
     z2 = zh + D/2.
     zcc = np.linspace(z1,z2,10)
@@ -59,6 +102,27 @@ def alpha(z,S,zh,D,ax=-1):
 
 
 def psi(z,WD,zh,D,ax=-1):
+    '''
+    Compute wind veer by fitting a line to
+    the wind direction profile over the rotor disk region
+
+    Parameters
+    ----------
+    z: numpy 1D array of Nz
+        heights
+    WD: numpy nD array
+        wind direction [degrees]
+    zh,D: float
+        hub height and radius of rotor disk
+    ax: int
+        average wind veer over the rotor disk
+        default: last axis
+
+    Returns
+    -------
+    psi: numpy nD-1 array
+        average wind veer over the rotor disk
+    '''
     z1 = zh - D/2.
     z2 = zh + D/2.
     zcc = np.linspace(z1,z2,10)
@@ -128,7 +192,7 @@ def disk_areas(zst,zc,r):
 
 def filter1d(a,b,ax=-1):
     '''
-    Multiplicate ndarray a with 1d array b along given axis
+    Multiply ndarray a with 1d array b along given axis
     '''
     
     # Create an array which would be used to reshape 1D array, b to have 
