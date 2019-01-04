@@ -55,7 +55,7 @@ def high_pass_filter(t,u,Tf):
         high-pass filtered signal
     '''
     N = t.size
-    uf = u
+    uf = u.copy()
     for i in range(1,N):
         dt = t[i]-t[i-1]
         alpha = Tf/(Tf+dt)
