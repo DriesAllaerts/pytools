@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-Monin-Obukhov similarity theory
+Surface-layer schemes
 
 By convention, the symbol T is used to represent potential temperature
 '''
@@ -13,10 +13,46 @@ import numpy as np
 import os
 
 class MOST(object):
-    
+    '''
+    Monin-Obukhov similarity theory
+
+    Implentation follows section 2 of
+    Blumel (2000) An approximate analytical solution of
+    flux-profile relationships for the atmospheric surface
+    layer with different momentum and heat roughness lengths
+    '''
     def __init__(self,z0,**kwargs):
+        '''
+        Default values
+
+        ABL parameters
+        - Surface roughness height for heat     z0t = z0
+        - Reference temperature                 T0  = 300 K
+        - Gravitational acceleration            g   = 9.81 m/s^2
+
+        MO parameters
+        - kappa   = 0.41    (von Karman constant)
+        - a_h     = 1       (inverse of turbulent Prandtl number at neutral conditions)
+        - beta_m  = 4.8
+        - beta_h  = 7.8
+        - gamma_m = 19.3
+        - gamma_h = 11.6
+        - veryStableRegime = True
+
+        Numerical parameters
+        - Maximum number of iterations      maxCount  = 100
+        - Tolerance                         tolerance = 1.0e-10
+        - Relaxation coefficient            alpha     = 1.0
+        '''
         #Surface roughness height
         self.__z0 = z0
+
+        #Surface roughness height for heat
+        try:
+            self.__z0t = kwargs['z0t']
+        except KeyError:
+            self.__z0t = self.z0
+
         
         #Reference temperature
         try:
@@ -24,19 +60,28 @@ class MOST(object):
         except KeyError:
             self.__T0 = 300.0
 
-        #Von Karman constant
-        try:
-            self.__kappa = kwargs['kappa']
-        except KeyError:
-            self.__kappa = 0.41
-
         #Gravitational acceleration
         try:
             self.__gravity = kwargs['gravity']
         except KeyError:
             self.__gravity = 9.81
 
+
         #MO parameters
+
+        #von Karman constant
+        try:
+            self.__kappa = kwargs['kappa']
+        except KeyError:
+            self.__kappa = 0.41
+
+        #inverse of turbulent Prandtl number at neutral conditions
+        try:
+            self.__ah = kwargs['ah']
+        except KeyError:
+            self.__ah = 1.
+
+
         try:
             self.__betam = kwargs['betam']
         except KeyError:
@@ -57,6 +102,11 @@ class MOST(object):
         except KeyError:
             self.__gammah = 11.6
 
+        try:
+            self.__veryStableRegime = kwargs['veryStableRegime']
+        except KeyError:
+            self.__veryStableRegime = True
+
         #Numerical parameters
         try:
             self.__tolerance = kwargs['tolerance']
@@ -73,7 +123,29 @@ class MOST(object):
         except KeyError:
             self.__alpha = 1.0
 
-#    def setMOParameters():
+    def setMOParameters(self,setname='default'):
+        if setname == 'Brutsaert1982':
+            self.kappa  = 0.4
+            self.ah     = 1.0
+            self.betam  = 5.0
+            self.betah  = 5.0
+            self.gammam = 16.0
+            self.gammah = 16.0
+        elif setname == 'Businger1971':
+            self.kappa  = 0.35
+            self.ah     = 1.35
+            self.betam  = 4.7
+            self.betah  = 6.35
+            self.gammam = 15.0
+            self.gammah = 9.0
+        else: #revert to default values
+            self.kappa  = 0.41
+            self.ah     = 1.0
+            self.betam  = 4.8
+            self.betah  = 7.8
+            self.gammam = 19.3
+            self.gammah = 11.6
+        return
 
     def calculateFluxes(self,z,U,**kwargs):
         assert (z > self.z0), \
@@ -153,9 +225,13 @@ class MOST(object):
             zeta = np.array([0.0,])
 
         if 'Ts' in kwargs:
-            return self.kappa * (T - kwargs['Ts']) / ( np.log(z/self.z0) - self.Psih(zeta) + self.Psih(self.z0/z*zeta) )
+            Tst = self.ah * self.kappa * (T - kwargs['Ts']) / \
+                    ( np.log(z/self.z0t) - self.Psih(zeta) + self.Psih(self.z0t/z*zeta) )
+            return Tst
         elif 'T2' in kwargs:
-            return self.kappa * (T - kwargs['T2']) / ( np.log(z/2.) - self.Psih(zeta) + self.Psih(2./z*zeta) )
+            Tst = self.ah * self.kappa * (T - kwargs['T2']) / \
+                    ( np.log(z/2.) - self.Psih(zeta) + self.Psih(2./z*zeta) )
+            return Tst
         else:
             print('Error: Either temperatures "T" and "Ts" or "T2", or surface heat flux "qw" must be specified')
             return 1
@@ -199,6 +275,8 @@ class MOST(object):
 
         Psim[zeta<0.]  = self.PsimUnstable(zeta[zeta<0.])
         Psim[zeta>=0.] = self.PsimStable(zeta[zeta>=0.])
+        if self.veryStableRegime:
+            Psim[zeta>=1.] = self.PsimVeryStable(zeta[zeta>=1.])
         return Psim
 
 
@@ -208,6 +286,8 @@ class MOST(object):
 
         Psih[zeta<0.]  = self.PsihUnstable(zeta[zeta<0.])
         Psih[zeta>=0.] = self.PsihStable(zeta[zeta>=0.])
+        if self.veryStableRegime:
+            Psih[zeta>=1.] = self.PsihVeryStable(zeta[zeta>=1.])
         return Psih
 
 
@@ -215,20 +295,28 @@ class MOST(object):
         return -self.betam*zeta
 
 
+    def PsimVeryStable(self,zeta):
+        return -self.betam*np.log(zeta) - self.betam
+
+
     def PsihStable(self,zeta):
         return -self.betah*zeta
 
 
+    def PsihVeryStable(self,zeta):
+        return -self.betah*np.log(zeta) - self.betah
+
+
     def PsimUnstable(self,zeta):
-        phim = self.phimUnstable(zeta)
-        Psim = np.log( ( (1 + phim**(-2.))/2. ) * ( (1 + phim**(-1.))/2. )**2. ) \
-                - 2 * np.arctan( phim**(-1.) ) + np.pi/2.
+        xm = self.phimUnstable(zeta)
+        Psim = np.log( ( (1 + xm**(-2.))/2. ) * ( (1 + xm**(-1.))/2. )**2. ) \
+                - 2 * np.arctan( xm**(-1.) ) + np.pi/2.
         return Psim
 
 
     def PsihUnstable(self,zeta):
-        phih = self.phihUnstable(zeta)
-        Psih = np.log( ( (1 + phih**(-1.))/2. )**2. )
+        xh = self.ah * self.phihUnstable(zeta)
+        Psih = np.log( ( (1 + xh**(-1.))/2. )**2. )
         return Psih
 
 
@@ -238,6 +326,8 @@ class MOST(object):
 
         phim[zeta<0.]  = self.phimUnstable(zeta[zeta<0.])
         phim[zeta>=0.] = self.phimStable(zeta[zeta>=0.])
+        if self.veryStableRegime:
+            phim[zeta>=1.] = self.phimVeryStable(zeta[zeta>=1.])
         return phim
 
 
@@ -247,6 +337,8 @@ class MOST(object):
 
         phih[zeta<0.]  = self.phihUnstable(zeta[zeta<0.])
         phih[zeta>=0.] = self.phihStable(zeta[zeta>=0.])
+        if self.veryStableRegime:
+            phih[zeta>=1.] = self.phihVeryStable(zeta[zeta>=1.])
         return phih
 
 
@@ -254,8 +346,16 @@ class MOST(object):
         return 1 + self.betam * zeta
 
 
+    def phimVeryStable(self,zeta):
+        return 1 + self.betam
+
+
     def phihStable(self,zeta):
-        return 1 + self.betah * zeta
+        return 1./self.ah * (1 + self.betah * zeta)
+
+
+    def phihVeryStable(self,zeta):
+        return 1./self.ah * (1 + self.betah)
 
 
     def phimUnstable(self,zeta):
@@ -263,21 +363,33 @@ class MOST(object):
 
 
     def phihUnstable(self,zeta):
-        return (1 - self.gammah*zeta)**(-0.5)
+        return 1./self.ah * (1 - self.gammah*zeta)**(-0.5)
 
 
     @property
     def z0(self):
         return self.__z0
     @property
+    def z0t(self):
+        return self.__z0t
+    @property
     def T0(self):
         return self.__T0
     @property
-    def kappa(self):
-        return self.__kappa
-    @property
     def gravity(self):
         return self.__gravity
+    @property
+    def kappa(self):
+        return self.__kappa
+    @kappa.setter
+    def kappa(self,value):
+        self.__kappa = value
+    @property
+    def ah(self):
+        return self.__ah
+    @ah.setter
+    def ah(self,value):
+        self.__ah = value
     @property
     def betam(self):
         return self.__betam
@@ -302,6 +414,9 @@ class MOST(object):
     @gammah.setter
     def gammah(self,value):
         self.__gammah = value
+    @property
+    def veryStableRegime(self):
+        return self.__veryStableRegime
     @property
     def tolerance(self):
         return self.__tolerance
