@@ -29,6 +29,7 @@ class MOST(object):
         - Surface roughness height for heat     z0t = z0
         - Reference temperature                 T0  = 300 K
         - Gravitational acceleration            g   = 9.81 m/s^2
+        - useT0 = False (unless T0 is given or specified directly)
 
         MO parameters
         - kappa   = 0.41    (von Karman constant)
@@ -53,12 +54,18 @@ class MOST(object):
         except KeyError:
             self.__z0t = self.z0
 
-        
         #Reference temperature
         try:
             self.__T0 = kwargs['T0']
+            self.__useT0 = True
         except KeyError:
             self.__T0 = 300.0
+            self.__useT0 = False
+
+        try:
+            self.__useT0 = kwargs['useT0']
+        except KeyError:
+            pass
 
         #Gravitational acceleration
         try:
@@ -125,6 +132,7 @@ class MOST(object):
 
     def setMOParameters(self,setname='default'):
         if setname == 'Brutsaert1982':
+            print('Using values of Brutsaert (1982)')
             self.kappa  = 0.4
             self.ah     = 1.0
             self.betam  = 5.0
@@ -132,6 +140,7 @@ class MOST(object):
             self.gammam = 16.0
             self.gammah = 16.0
         elif setname == 'Businger1971':
+            print('Using values of Businger (1971)')
             self.kappa  = 0.35
             self.ah     = 1.35
             self.betam  = 4.7
@@ -139,6 +148,7 @@ class MOST(object):
             self.gammam = 15.0
             self.gammah = 9.0
         else: #revert to default values
+            print('Using default values')
             self.kappa  = 0.41
             self.ah     = 1.0
             self.betam  = 4.8
@@ -159,39 +169,54 @@ class MOST(object):
         if 'Ts' in kwargs and 'T' in kwargs:
             Ts = kwargs['Ts']
             T  = kwargs['T']
+            Tinput = 'Ts'
         elif 'T2' in kwargs and 'T' in kwargs:
             T2 = kwargs['T2']
             T  = kwargs['T']
-        elif 'qw' in kwargs and not 'T' in kwargs:
+            Tinput = 'T2'
+        elif 'qw' in kwargs:
             qw = kwargs['qw']
+            Tinput = 'qw'
         else:
             print('Error: Either temperatures "T" and "Ts" or "T2", or surface heat flux "qw" must be specified')
             return 1
+        
+        # Set reference temeprature to be used in the computation of zeta
+        # (i.e. in the Obukhov length). If useT0 is True but T is not specified
+        # (e.g. when only qw is specified), revert to using T0
+        if not self.useT0:
+            try:
+                TRef = kwargs['T']
+            except KeyError:
+                print('Warning: T is not provided, so using T0 to compute Obukhov length')
+                TRef = self.T0
+        else:
+            TRef = self.T0
 
         #initial guess for ust, Tst and zeta
         ust = self.ust(z,U)
-        if 'T' in kwargs:
-            if 'Ts' in kwargs:
-                Tst = self.Tst(z,T,Ts=kwargs['Ts'])
-            else:
-                Tst = self.Tst(z,T,T2=kwargs['T2'])
-            zeta0 = self.zeta(z,ust,Tst=Tst)
+        if Tinput == 'Ts':
+            Tst = self.Tst(z,T,Ts=Ts)
+            zeta0 = self.zeta(z,ust,Tst=Tst,TRef=TRef)
+        elif Tinput == 'T2':
+            Tst = self.Tst(z,T,T2=T2)
+            zeta0 = self.zeta(z,ust,Tst=Tst,TRef=TRef)
         else:
-            zeta0 = self.zeta(z,ust,qw=qw)
+            zeta0 = self.zeta(z,ust,qw=qw,TRef=TRef)
         
         # Loop until convergence
         count = 0
         error = 1
         while (error > self.tolerance and count < self.maxCount):
             ust = self.ust(z,U,zeta=zeta0)
-            if 'T' in kwargs:
-                if 'Ts' in kwargs:
-                    Tst = self.Tst(z,T,Ts=kwargs['Ts'],zeta=zeta0)
-                else:
-                    Tst = self.Tst(z,T,T2=kwargs['T2'],zeta=zeta0)
-                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,Tst=Tst)
+            if Tinput == 'Ts':
+                Tst = self.Tst(z,T,Ts=Ts,zeta=zeta0)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,Tst=Tst,TRef=TRef)
+            elif Tinput == 'T2':
+                Tst = self.Tst(z,T,T2=T2,zeta=zeta0)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,Tst=Tst,TRef=TRef)
             else:
-                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,qw=qw)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,qw=qw,TRef=TRef)
                 Tst = -qw/ust
 
             error = np.max(np.abs(zeta - zeta0))
@@ -254,16 +279,26 @@ class MOST(object):
         z   = np.tile(z,(Nt,1))
         ust = np.tile(ust,(Nz,1)).T
 
+        #If TRef is not specified, use T0
+        if 'TRef' in kwargs:
+            TRef = kwargs['TRef']
+        else:
+            TRef = self.T0
+        #Revert TRef to array (Nt,Nz)
+        if np.isscalar(TRef): TRef = np.array([TRef,])
+        TRef = np.tile(TRef,(Nz,1)).T
+
+
         if 'Tst' in kwargs:
             Tst = kwargs['Tst']
             if np.isscalar(Tst): Tst = np.array([Tst,])
             Tst = np.tile(Tst,(Nz,1)).T
-            return np.squeeze( self.kappa * self.gravity * z * Tst / (ust**2 * self.T0) )
+            return np.squeeze( self.kappa * self.gravity * z * Tst / (ust**2 * TRef) )
         elif 'qw' in kwargs:
             qw = kwargs['qw']
             if np.isscalar(qw): qw = np.array([qw,])
             qw = np.tile(qw,(Nz,1)).T
-            return np.squeeze( -self.kappa * self.gravity * z * qw / (ust**3 * self.T0) )
+            return np.squeeze( -self.kappa * self.gravity * z * qw / (ust**3 * TRef) )
         else:
             print('Error: Either temperature scale "Tst" or heat flux "qw" must be specified')
             return 1
@@ -376,6 +411,12 @@ class MOST(object):
     def T0(self):
         return self.__T0
     @property
+    def useT0(self):
+        return self.__useT0
+    @useT0.setter
+    def useT0(self,value):
+        self._useT0 = bool(value)
+    @property
     def gravity(self):
         return self.__gravity
     @property
@@ -417,6 +458,9 @@ class MOST(object):
     @property
     def veryStableRegime(self):
         return self.__veryStableRegime
+    @veryStableRegime.setter
+    def veryStableRegime(self,value):
+        self.__veryStableRegime = bool(value)
     @property
     def tolerance(self):
         return self.__tolerance
