@@ -10,18 +10,27 @@ __date__   = "January 11, 2019"
 import numpy as np
 import os
 
-def modifiedRiMethod(z,U,T,Tskin,ust,Tst,gravity=9.81,T0=300.0):
+def modifiedRiMethod(z,             #Vertical grid levels
+                     U,             #Wind speed
+                     T,             #Potential temperature
+                     Tskin,         #Surface skin potential temperature
+                     ust,           #Friction velocity
+                     Tst,           #Temperature scale
+                     gravity=9.81,  #Gravitational acceleration
+                     T0=300.0,      #Reference temperature
+                     C=6.5,         #Countergradient flux constant
+                     eps=0.1,       #Ratio of surface layer to boundary-layer height
+                     kappa=0.4,     #von Karman constant
+                     Ric=0.5        #Critical Richardson number
+                     ):
     '''
     Determine the boundary-layer depth based on
     a modified bulk Richardson number
 
     see Troen and Mahrt (1986)
     '''
-    C = 6.5
-    eps = 0.1
-    kappa = 0.4
+    #First nonzero vertical level
     k1 = np.min(np.nonzero(z))
-    Ric = 0.5
 
     def convectiveVelocityScale(h,ust0,Tst0):
         wst3 = -gravity*h/T0 * Tst0 * ust0
