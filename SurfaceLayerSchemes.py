@@ -21,12 +21,11 @@ class MOST(object):
     flux-profile relationships for the atmospheric surface
     layer with different momentum and heat roughness lengths
     '''
-    def __init__(self,z0,**kwargs):
+    def __init__(self,**kwargs):
         '''
         Default values
 
         ABL parameters
-        - Surface roughness height for heat     z0t = z0
         - Reference temperature                 T0  = 300 K
         - Gravitational acceleration            g   = 9.81 m/s^2
         - useT0 = False (unless T0 is given or specified directly)
@@ -45,15 +44,6 @@ class MOST(object):
         - Tolerance                         tolerance = 1.0e-10
         - Relaxation coefficient            alpha     = 1.0
         '''
-        #Surface roughness height
-        self.__z0 = z0
-
-        #Surface roughness height for heat
-        try:
-            self.__z0t = kwargs['z0t']
-        except KeyError:
-            self.__z0t = self.z0
-
         #Reference temperature
         try:
             self.__T0 = kwargs['T0']
@@ -157,28 +147,34 @@ class MOST(object):
             self.gammah = 11.6
         return
 
-    def calculateFluxes(self,z,U,**kwargs):
-        assert (z > self.z0), \
-            'Error: z should be larger than the surface roughness'
+    def calculateFluxes(self,z1,U1,z0,**kwargs):
+        assert (z1 > z0), \
+            'Error: z1 should be larger than the surface roughness'
+
+        #Surface roughness height for heat
+        try:
+            z0t = kwargs['z0t']
+        except KeyError:
+            z0t = z0
 
         try:
             verbose = kwargs['verbose']
         except KeyError:
             verbose = False
         
-        if 'Ts' in kwargs and 'T' in kwargs:
+        if 'Ts' in kwargs and 'T1' in kwargs:
             Ts = kwargs['Ts']
-            T  = kwargs['T']
+            T1  = kwargs['T1']
             Tinput = 'Ts'
-        elif 'T2' in kwargs and 'T' in kwargs:
+        elif 'T2' in kwargs and 'T1' in kwargs:
             T2 = kwargs['T2']
-            T  = kwargs['T']
+            T1  = kwargs['T1']
             Tinput = 'T2'
         elif 'qw' in kwargs:
             qw = kwargs['qw']
             Tinput = 'qw'
         else:
-            print('Error: Either temperatures "T" and "Ts" or "T2", or surface heat flux "qw" must be specified')
+            print('Error: Either temperatures "T1" and "Ts" or "T2", or surface heat flux "qw" must be specified')
             return 1
         
         # Set reference temeprature to be used in the computation of zeta
@@ -186,37 +182,37 @@ class MOST(object):
         # (e.g. when only qw is specified), revert to using T0
         if not self.useT0:
             try:
-                TRef = kwargs['T']
+                TRef = kwargs['T1']
             except KeyError:
-                print('Warning: T is not provided, so using T0 to compute Obukhov length')
+                print('Warning: T1 is not provided, so using T0 to compute Obukhov length')
                 TRef = self.T0
         else:
             TRef = self.T0
 
         #initial guess for ust, Tst and zeta
-        ust = self.ust(z,U)
+        ust = self.ust(z1,U1,z0)
         if Tinput == 'Ts':
-            Tst = self.Tst(z,T,Ts=Ts)
-            zeta0 = self.zeta(z,ust,Tst=Tst,TRef=TRef)
+            Tst = self.Tst(z1,T1,z0t=z0t,Ts=Ts)
+            zeta0 = self.zeta(z1,ust,Tst=Tst,TRef=TRef)
         elif Tinput == 'T2':
-            Tst = self.Tst(z,T,T2=T2)
-            zeta0 = self.zeta(z,ust,Tst=Tst,TRef=TRef)
+            Tst = self.Tst(z1,T1,T2=T2)
+            zeta0 = self.zeta(z1,ust,Tst=Tst,TRef=TRef)
         else:
-            zeta0 = self.zeta(z,ust,qw=qw,TRef=TRef)
+            zeta0 = self.zeta(z1,ust,qw=qw,TRef=TRef)
         
         # Loop until convergence
         count = 0
         error = 1
         while (error > self.tolerance and count < self.maxCount):
-            ust = self.ust(z,U,zeta=zeta0)
+            ust = self.ust(z1,U1,z0,zeta=zeta0)
             if Tinput == 'Ts':
-                Tst = self.Tst(z,T,Ts=Ts,zeta=zeta0)
-                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,Tst=Tst,TRef=TRef)
+                Tst = self.Tst(z1,T1,z0t=z0t,Ts=Ts,zeta=zeta0)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z1,ust,Tst=Tst,TRef=TRef)
             elif Tinput == 'T2':
-                Tst = self.Tst(z,T,T2=T2,zeta=zeta0)
-                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,Tst=Tst,TRef=TRef)
+                Tst = self.Tst(z1,T1,T2=T2,zeta=zeta0)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z1,ust,Tst=Tst,TRef=TRef)
             else:
-                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z,ust,qw=qw,TRef=TRef)
+                zeta = (1-self.alpha)*zeta0 + self.alpha*self.zeta(z1,ust,qw=qw,TRef=TRef)
                 Tst = -qw/ust
 
             error = np.max(np.abs(zeta - zeta0))
@@ -228,55 +224,47 @@ class MOST(object):
         if count == self.maxCount:
             print('Warning: performed maximum number of iterations without reaching convergence')
 
-        if np.isscalar(U):
+        if np.isscalar(U1):
             ust = np.asscalar(ust)
             Tst = np.asscalar(Tst)
         return ust,Tst
 
 
-    def ust(self,z,U,**kwargs):
+    def ust(self,z1,U1,z0,**kwargs):
         try:
             zeta = kwargs['zeta']
         except KeyError:
             zeta = np.array([0.0,])
 
-        return self.kappa * U / ( np.log(z/self.z0) - self.Psim(zeta) + self.Psim(self.z0/z*zeta) )
+        return self.kappa * U1 / ( np.log(z1/z0) - self.Psim(zeta) + self.Psim(z0/z1*zeta) )
 
 
-    def Tst(self,z,T,**kwargs):
+    def Tst(self,z1,T1,**kwargs):
         try:
             zeta = kwargs['zeta']
         except KeyError:
             zeta = np.array([0.0,])
 
-        if 'Ts' in kwargs:
-            Tst = self.ah * self.kappa * (T - kwargs['Ts']) / \
-                    ( np.log(z/self.z0t) - self.Psih(zeta) + self.Psih(self.z0t/z*zeta) )
+        if 'Ts' in kwargs and 'z0t' in kwargs:
+            Tst = self.ah * self.kappa * (T1 - kwargs['Ts']) / \
+                    ( np.log(z1/kwargs['z0t']) - self.Psih(zeta) + self.Psih(kwargs['z0t']/z1*zeta) )
             return Tst
         elif 'T2' in kwargs:
-            Tst = self.ah * self.kappa * (T - kwargs['T2']) / \
-                    ( np.log(z/2.) - self.Psih(zeta) + self.Psih(2./z*zeta) )
+            Tst = self.ah * self.kappa * (T1 - kwargs['T2']) / \
+                    ( np.log(z1/2.) - self.Psih(zeta) + self.Psih(2./z1*zeta) )
             return Tst
         else:
-            print('Error: Either temperatures "T" and "Ts" or "T2", or surface heat flux "qw" must be specified')
+            print('Error: Either "Ts" and "z0t" or "T2" must be specified')
             return 1
 
 
-    def zeta(self,z,ust,**kwargs):
-#        assert (np.isscalar(z)), \
-#            'Error: z should be a scalar'
-#        assert (type(ust) == type(Tst)), \
-#            'Error: ust and Tst should be of the same type'
-#        if not np.isscalar(ust):
-#            assert (type(ust) == np.ndarray)
-#            assert (ust.size == Tst.size), \
-#                'Error: ust and Tst should have the same size'
-        #if z is an array, output has shape (ust.size,z.size)
-        if np.isscalar(z):   z = np.array([z,])
+    def zeta(self,heights,ust,**kwargs):
+        #if heights is an array, output has shape (ust.size,heights.size)
+        if np.isscalar(heights):   heights = np.array([heights,])
         if np.isscalar(ust): ust = np.array([ust,])
-        Nz = z.size
+        Nz = heights.size
         Nt = ust.size
-        z   = np.tile(z,(Nt,1))
+        heights   = np.tile(heights,(Nt,1))
         ust = np.tile(ust,(Nz,1)).T
 
         #If TRef is not specified, use T0
@@ -293,12 +281,12 @@ class MOST(object):
             Tst = kwargs['Tst']
             if np.isscalar(Tst): Tst = np.array([Tst,])
             Tst = np.tile(Tst,(Nz,1)).T
-            return np.squeeze( self.kappa * self.gravity * z * Tst / (ust**2 * TRef) )
+            return np.squeeze( self.kappa * self.gravity * heights * Tst / (ust**2 * TRef) )
         elif 'qw' in kwargs:
             qw = kwargs['qw']
             if np.isscalar(qw): qw = np.array([qw,])
             qw = np.tile(qw,(Nz,1)).T
-            return np.squeeze( -self.kappa * self.gravity * z * qw / (ust**3 * TRef) )
+            return np.squeeze( -self.kappa * self.gravity * heights * qw / (ust**3 * TRef) )
         else:
             print('Error: Either temperature scale "Tst" or heat flux "qw" must be specified')
             return 1
@@ -401,12 +389,6 @@ class MOST(object):
         return 1./self.ah * (1 - self.gammah*zeta)**(-0.5)
 
 
-    @property
-    def z0(self):
-        return self.__z0
-    @property
-    def z0t(self):
-        return self.__z0t
     @property
     def T0(self):
         return self.__T0

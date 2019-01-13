@@ -119,8 +119,7 @@ class TroenMahrtScheme():
 
     def Prandtl(self,h,ust,Tst):
         #Create MOST model to use phim and phih functions
-        #phim and phih are independent of z0, so value of z0 is irrelevant here
-        MO = MOST(z0=0.1,T0=self.T0,gravity=self.gravity)
+        MO = MOST(T0=self.T0,gravity=self.gravity)
         MO.setMOParameters('Businger1971')
         MO.kappa = self.kappa
         MO.veryStableRegime = False
