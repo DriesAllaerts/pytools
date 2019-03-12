@@ -25,7 +25,7 @@ import pandas as pd
 from mpi4py import MPI
 import argparse
 from datatools.vtkTools import read_vtkStructured,write_vtkStructured
-from pytools.GravityWaveTools import upwardWave,downwardWave
+from pytools.postProcessing.GravityWaveTools import upwardWave,downwardWave
 
 def main(srcdir,basename,verbose):
     #find time subdirectories
